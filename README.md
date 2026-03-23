@@ -1,4 +1,4 @@
-# Unified Human Motion Pretraining
+# Unified Human Motion-Language Alignment Pretraining
 
 > **Anonymous submission under review.** This repository contains the code release accompanying the paper submission. Model weights and full data preprocessing pipeline will be released upon acceptance.
 
