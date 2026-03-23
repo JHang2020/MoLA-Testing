@@ -1,16 +1,3 @@
-"""
-Copyright 2024 LY Corporation
-LY Corporation licenses this file to you under the CC BY-NC 4.0
-(the "License"); you may not use this file except in compliance
-with the License. You may obtain a copy of the License at:
-    https://creativecommons.org/licenses/by-nc/4.0/
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
-License for the specific language governing permissions and limitations
-under the License.
-"""
-
 import logging
 import os
 import sys
@@ -27,9 +14,10 @@ from transformers import AutoTokenizer
 
 sys.path.insert(0, os.getcwd())
 from dataset import TextMotionPartDataset
-from models.clip import ClipModel
+from models.mola import ClipModel
 
 log = logging.getLogger(__name__)
+os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
 def euclidean_distance_matrix(matrix1, matrix2):
     """
@@ -51,13 +39,15 @@ def euclidean_distance_matrix(matrix1, matrix2):
 def main(cfg: DictConfig) -> None:
     saved_cfg = OmegaConf.load(pjoin(cfg.checkpoints_dir, ".hydra/config.yaml"))
     print(OmegaConf.to_yaml(saved_cfg))
-    test_dataloader = prepare_test_dataset(saved_cfg)
+    test_dataloader = prepare_test_dataset_part(saved_cfg)
     model, tokenizer = prepare_test_model(saved_cfg)
-    part_enhanced = cfg.eval.part_enhanced
-    eval_part(saved_cfg, test_dataloader, model, tokenizer, part_enhanced=part_enhanced)
+    
+    train_dataloader = prepare_train_dataset(saved_cfg)
 
-
-def prepare_test_dataset(cfg):
+    # part_enhanced params: False: MoLA; True: MoLA++ 
+    eval_part(saved_cfg, train_dataloader, test_dataloader, model, tokenizer, part_enhanced=True)
+    
+def prepare_test_dataset_part(cfg):
     mean = np.load(pjoin(cfg.dataset.data_root, "Mean_raw.npy"))
     std = np.load(pjoin(cfg.dataset.data_root, "Std_raw.npy"))
 
@@ -65,6 +55,26 @@ def prepare_test_dataset(cfg):
         test_split_file = pjoin(cfg.dataset.data_root, "train.txt")
     else:
         test_split_file = pjoin(cfg.dataset.data_root, "test.txt")
+    print(test_split_file, cfg.dataset.data_root)
+    test_dataset = TextMotionPartDataset(
+        cfg,
+        mean,
+        std,
+        test_split_file,
+        eval_mode=True,
+        patch_size=cfg.train.patch_size,
+        fps=True,
+    )
+    test_dataloader = DataLoader(
+        test_dataset, batch_size=16, shuffle=False, num_workers=16
+    )
+    return test_dataloader
+
+def prepare_train_dataset(cfg):
+    mean = np.load(pjoin(cfg.dataset.data_root, "Mean_raw.npy"))
+    std = np.load(pjoin(cfg.dataset.data_root, "Std_raw.npy"))
+
+    test_split_file = pjoin(cfg.dataset.data_root, "train.txt")
     test_dataset = TextMotionPartDataset(
         cfg,
         mean,
@@ -88,9 +98,15 @@ def prepare_test_model(cfg):
     text_embedding_dims: int = 768
     projection_dims: int = 256
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        text_encoder_alias, TOKENIZERS_PARALLELISM=True
-    )
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(
+            text_encoder_alias, TOKENIZERS_PARALLELISM=True
+        )
+    except: # your local path
+        tokenizer = AutoTokenizer.from_pretrained(
+            '/mnt/netdisk/zhangjh/Code/TMR/distill-bert/distill-bert', TOKENIZERS_PARALLELISM=True
+        )
+
     model = ClipModel(
         motion_encoder_alias=motion_encoder_alias,
         text_encoder_alias=text_encoder_alias,
@@ -105,7 +121,7 @@ def prepare_test_model(cfg):
         model_path = pjoin(cfg.checkpoints_dir, "best_model.pt")
     else:
         model_path = pjoin(cfg.checkpoints_dir, "last_model.pt")
-
+    
     print(model_path)
     state_dict = torch.load(model_path)
 
@@ -115,7 +131,7 @@ def prepare_test_model(cfg):
 
     return model, tokenizer
 
-def eval_part(cfg, test_dataloader, model, tokenizer=None, verbose=True, part_enhanced=False):
+def eval_part(cfg, train_dataloader, test_dataloader, model, tokenizer=None, verbose=True, part_enhanced=False,truncation=True,max_length=100,):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     dataset_pair = dict()
 
@@ -132,9 +148,33 @@ def eval_part(cfg, test_dataloader, model, tokenizer=None, verbose=True, part_en
     step = 0
     cnt_len = 0
     attn_list = []
-    PART_NUM = 5
     with torch.no_grad():
         model.eval()
+        train_bar = tqdm(train_dataloader, leave=False)
+        train_text_feat = []
+        train_motion_feat = []
+        for batch in train_bar:
+            try:
+                texts, motions, _, _, m_length, _ = batch
+            except:
+                texts, motions, _, _, _, _, m_length, _ = batch
+            texts = list(texts)
+            motions = motions.to(device)
+            texts_token = tokenizer(
+                texts, padding=True, return_tensors="pt",truncation=truncation,max_length=max_length
+            ).to(device)
+            motion_features = model.encode_motion(motions)[0]
+            text_features = model.encode_text(texts_token)
+            
+            motion_features = motion_features / motion_features.norm(dim=1, keepdim=True)
+            text_features = text_features / text_features.norm(dim=1, keepdim=True)
+            train_text_feat.append(text_features)
+            train_motion_feat.append(motion_features)
+
+        train_text_feat = torch.concatenate(train_text_feat, dim=0).cpu().numpy()
+        train_motion_feat = torch.concatenate(train_motion_feat, dim=0).cpu().numpy()
+
+
         test_pbar = tqdm(test_dataloader, leave=False)
         avg_bloss, avg_ploss = 0.0, 0.0
         for batch in test_pbar:
@@ -142,17 +182,17 @@ def eval_part(cfg, test_dataloader, model, tokenizer=None, verbose=True, part_en
             texts, motions, part_text, part_mask, m_length, img_indexs = batch
             texts = list(texts)
             part_text = list(part_text)
-            for i in range(PART_NUM):
+            for i in range(5):
                 part_text[i] = list(part_text[i])
 
             motions = motions.to(device)
             part_text = np.array(part_text).transpose(1,0).flatten().tolist()
 
             texts_token = tokenizer(
-                texts, padding=True, return_tensors="pt"
+                texts, padding=True, return_tensors="pt",truncation=truncation,max_length=max_length
             ).to(device)
             part_texts_token = tokenizer(
-                part_text, padding=True, return_tensors="pt"
+                part_text, padding=True, return_tensors="pt",truncation=truncation,max_length=max_length
             ).to(device)
             all_len_list.append(m_length)
             attn_save = False
@@ -189,15 +229,19 @@ def eval_part(cfg, test_dataloader, model, tokenizer=None, verbose=True, part_en
     all_part_mfeat = np.stack(all_part_mfeat, axis=0)
     all_part_tfeat = np.stack(all_part_tfeat, axis=0)
     part_masks = torch.cat(part_masks, dim=0).cpu().numpy()
+    
+
     if attn_save:
         attn_list = np.concatenate(attn_list, axis=0)
     # match test queries to target motions, get nearest neighbors
     sims_t2m = 100 * all_captions_feat.dot(all_imgs_feat.T)
+    train_t_test_m = 100 * train_text_feat.dot(all_imgs_feat.T)
+    train_m_test_t = 100 * train_motion_feat.dot(all_captions_feat.T)
     all_img_idxs = np.array(all_img_idxs)
 
     part_sim_scores = np.zeros_like(sims_t2m)
     if part_enhanced:
-        for i in range(PART_NUM):
+        for i in range(5):
             part_mfeat = all_part_mfeat[:, i]
             part_tfeat = all_part_tfeat[:, i]
             part_sim = 100 * part_tfeat.dot(part_mfeat.T)
@@ -205,7 +249,41 @@ def eval_part(cfg, test_dataloader, model, tokenizer=None, verbose=True, part_en
             part_sim[:, part_masks[:,i].astype(bool)] = 0
             sims_t2m += 0.1 * part_sim
             part_sim_scores += 0.1 * part_sim
-                    
+    
+    sims_m2t = sims_t2m.T
+    #################################
+    # Toolbox
+    def get_retrieved_videos(sims, k):
+        argm = np.argsort(-sims, axis=1)
+        topk = argm[:,:k].reshape(-1)
+        retrieved_videos = np.unique(topk)
+        return retrieved_videos
+
+    # Returns list of indices to normalize from sims based on videos
+    def get_index_to_normalize(sims, videos):
+        argm = np.argsort(-sims, axis=1)[:,0]
+        result = np.array(list(map(lambda x: x in videos, argm)))
+        result = np.nonzero(result)
+        return result
+
+    def qb_norm(train_test, test_test):
+        k = 1 
+        beta = 10 
+        retrieved_videos = get_retrieved_videos(train_test, k)
+        test_test_normalized = test_test
+        train_test = np.exp(train_test*beta)
+        test_test = np.exp(test_test*beta)
+        
+        normalizing_sum = np.sum(train_test, axis=0)
+        index_for_normalizing = get_index_to_normalize(test_test, retrieved_videos)
+        test_test_normalized[index_for_normalizing, :] = \
+            np.divide(test_test[index_for_normalizing, :], normalizing_sum)
+        return test_test_normalized
+    #########################
+
+    
+    sims_t2m = qb_norm(train_t_test_m/100, sims_t2m/100) * 100
+
     t2m_r1 = 0
     # Text->Motion
     ranks = np.zeros(sims_t2m.shape[0])
@@ -230,7 +308,7 @@ def eval_part(cfg, test_dataloader, model, tokenizer=None, verbose=True, part_en
         log.info(f"t2m_recall_median_correct_composition: {np.median(ranks)+1:.2f}")
 
     # match motions queries to target texts, get nearest neighbors
-    sims_m2t = sims_t2m.T
+    sims_m2t = qb_norm(train_m_test_t/100, sims_m2t/100) * 100
 
     m2t_r1 = 0
     # Motion->Text
@@ -256,109 +334,6 @@ def eval_part(cfg, test_dataloader, model, tokenizer=None, verbose=True, part_en
         log.info(f"m2t_recall_median_correct_composition: {np.median(ranks)+1:.2f}")
 
     return t2m_r1, m2t_r1, avg_bloss, avg_ploss
-
-def eval(cfg, test_dataloader, model, tokenizer=None, verbose=True, truncation=False,max_length=80):
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    dataset_pair = dict()
-
-    all_imgs_feat = []
-    all_captions_feat = []
-
-    all_img_idxs = []
-    all_captions = []
-
-    step = 0
-    with torch.no_grad():
-        model.eval()
-        test_pbar = tqdm(test_dataloader, leave=False)
-        for batch in test_pbar:
-            step += 1
-            texts, motions, _, _, m_length, img_indexs = batch
-            motions = motions.to(device)
-
-            texts_token = tokenizer(
-                texts, padding=True, return_tensors="pt",truncation=truncation,max_length=max_length
-            ).to(device)
-
-            motion_features = model.encode_motion(motions)[0]
-            text_features = model.encode_text(texts_token)
-
-            # normalized features
-            motion_features = motion_features / motion_features.norm(
-                dim=1, keepdim=True
-            )
-            text_features = text_features / text_features.norm(dim=1, keepdim=True)
-
-            for i in range(motion_features.size(0)):
-                all_imgs_feat.append(motion_features[i].cpu().numpy())
-                all_captions_feat.append(text_features[i].cpu().numpy())
-
-                all_captions.append(texts[i])
-                all_img_idxs.append(img_indexs[i])
-
-    all_captions = np.array(all_captions)
-    for img_idx, caption in zip(all_img_idxs, all_captions):
-        dataset_pair[int(img_idx)] = np.where(all_captions == caption)[0]
-    
-
-    all_imgs_feat = np.vstack(all_imgs_feat)
-    all_captions_feat = np.vstack(all_captions_feat)
-
-    # match test queries to target motions, get nearest neighbors
-    sims_t2m = 100 * all_captions_feat.dot(all_imgs_feat.T)
-
-    t2m_r1 = 0
-    # Text->Motion
-    ranks = np.zeros(sims_t2m.shape[0])
-    for index, score in enumerate(tqdm(sims_t2m)):
-        index = int(index)
-        inds = np.argsort(score)[::-1]
-        # Score
-        rank = 1e20
-        for i in dataset_pair[index]:
-            tmp = np.where(inds == i)[0][0]
-            if tmp < rank:
-                rank = tmp
-        ranks[index] = rank
-
-    for k in [1, 2, 3, 5, 10]:
-        # Compute metrics
-        r = 100.0 * len(np.where(ranks < k)[0]) / len(ranks)
-        if k == 1:
-            t2m_r1 = r
-        if verbose:
-            log.info(f"t2m_recall_top{k}_correct_composition: {r:.2f}")
-    if verbose:
-        log.info(f"t2m_recall_median_correct_composition: {np.median(ranks)+1:.2f}")
-
-    # match motions queries to target texts, get nearest neighbors
-    sims_m2t = sims_t2m.T
-
-    m2t_r1 = 0
-    # Motion->Text
-    ranks = np.zeros(sims_m2t.shape[0])
-    for index, score in enumerate(tqdm(sims_m2t)):
-        inds = np.argsort(score)[::-1]
-        # Score
-        rank = 1e20
-        for i in dataset_pair[index]:
-            tmp = np.where(inds == i)[0][0]
-            if tmp < rank:
-                rank = tmp
-        ranks[index] = rank
-
-    for k in [1, 2, 3, 5, 10]:
-        # Compute metrics
-        r = 100.0 * len(np.where(ranks < k)[0]) / len(ranks)
-        if k == 1:
-            m2t_r1 = r
-        if verbose:
-            log.info(f"m2t_recall_top{k}_correct_composition: {r:.2f}")
-    if verbose:
-        log.info(f"m2t_recall_median_correct_composition: {np.median(ranks)+1:.2f}")
-
-    return t2m_r1, m2t_r1, torch.tensor(0.0), torch.tensor(0.0)
-
 
 if __name__ == "__main__":
     main()

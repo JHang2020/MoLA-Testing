@@ -19,6 +19,7 @@ patch_checkpoints/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
+data/HumanML3D/glove
 *$py.class
 。scripts/train_part_mix_localdir_soft.py
 scripts/train_part_mix_localdir_soft.py

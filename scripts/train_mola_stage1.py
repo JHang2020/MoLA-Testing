@@ -1,16 +1,3 @@
-"""
-Copyright 2024 LY Corporation
-LY Corporation licenses this file to you under the CC BY-NC 4.0
-(the "License"); you may not use this file except in compliance
-with the License. You may obtain a copy of the License at:
-    https://creativecommons.org/licenses/by-nc/4.0/
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
-License for the specific language governing permissions and limitations
-under the License.
-"""
-
 import itertools
 import logging
 import os
@@ -28,16 +15,16 @@ from tqdm import tqdm
 from transformers import AutoTokenizer
 
 sys.path.insert(0, os.getcwd())
-from datasets import TextMotionPartDataset
+from dataset import TextMotionPartDataset
 from models.clip import ClipModel
-from scripts.test import eval_part, prepare_test_dataset
+from scripts.test import eval_part, prepare_test_dataset_part
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
 log = logging.getLogger(__name__)
 
 
-@hydra.main(version_base=None, config_name="config", config_path="../conf")
+@hydra.main(version_base=None, config_name="config_s1", config_path="../conf")
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     os.makedirs(cfg.checkpoints_dir, exist_ok=True)
@@ -47,7 +34,7 @@ def main(cfg: DictConfig) -> None:
         file.close()
     set_seed(cfg.train.seed)
     train_dataloader, test_dataloader = prepare_dataset(cfg)
-    eval_dataloader = prepare_test_dataset(cfg)
+    eval_dataloader = prepare_test_dataset_part(cfg)
     test_dataloader = eval_dataloader
     model, optimizer, scheduler, tokenizer = prepare_model(cfg, train_dataloader)
     train(
@@ -110,9 +97,14 @@ def prepare_model(cfg, train_dataloader):
     text_embedding_dims: int = 768
     projection_dims: int = 256
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        text_encoder_alias, TOKENIZERS_PARALLELISM=True
-    )
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(
+            text_encoder_alias, TOKENIZERS_PARALLELISM=True
+        )
+    except: # your local path
+        tokenizer = AutoTokenizer.from_pretrained(
+            '/mnt/netdisk/zhangjh/Code/TMR/distill-bert/distill-bert', TOKENIZERS_PARALLELISM=True
+        )
 
     model = ClipModel(
         motion_encoder_alias,
@@ -133,7 +125,7 @@ def prepare_model(cfg, train_dataloader):
         print('Loading ', cfg.resume)
         state_dict = torch.load(cfg.resume)
         model.load_state_dict(state_dict)
-    
+
     model.to(device)
 
     parameters = [
@@ -213,7 +205,6 @@ def train(
             tr_loss += total_loss.item()
             optimizer.step()
             scheduler.step()
-
             if step % 20 ==0:
                 with open(cfg.log_path, 'a+') as f:
                     f.write(f"train bodyCE: {contrast_loss.item()} partCE: {part_loss.item()} train mix bodyCE: {mix_contrast_loss.item()} mix partCE: {mix_part_loss.item()}  local_loss: {local_loss.item()} all: {total_loss.item()}"+'\n')
@@ -223,11 +214,11 @@ def train(
         torch.save(model.state_dict(), pjoin(cfg.checkpoints_dir, "last_model.pt"))
 
         t2m_r1, m2t_r1, avg_bloss, avg_ploss = eval_part(
-            cfg, eval_dataloader, model, tokenizer=tokenizer, verbose=False
+            cfg, train_dataloader, eval_dataloader, model, tokenizer=tokenizer, verbose=False
         )
 
         log.info(
-            f"epoch {epoch}, tr_loss {tr_loss}, vb_loss {avg_bloss.item()}, vp_loss {avg_ploss.item()}, t2m_r1 {t2m_r1}, m2t_r1 {m2t_r1} "
+            f"epoch {epoch}, tr_loss {tr_loss}, vb_loss {avg_bloss}, vp_loss {avg_ploss}, t2m_r1 {t2m_r1}, m2t_r1 {m2t_r1} "
         )
         with open(cfg.log_path, 'a+') as f:
             f.write("epoch {}, tr_loss {}, vb_loss {}, vp_loss {}, t2m_r1 {}, m2t_r1 {}".format(epoch, tr_loss, avg_bloss,avg_ploss, t2m_r1, m2t_r1)+'\n')

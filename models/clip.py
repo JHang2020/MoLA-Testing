@@ -70,7 +70,7 @@ class TextEncoder(nn.Module):
         try:
             self.text_model = transformers.AutoModel.from_pretrained(model_name)
         except:
-            self.text_model = transformers.AutoModel.from_pretrained('your path to the DistillBERT')
+            self.text_model = transformers.AutoModel.from_pretrained('/mnt/netdisk/zhangjh/Code/TMR/distill-bert/distill-bert')
 
         for param in self.text_model.parameters():
             param.requires_grad = trainable
@@ -108,7 +108,7 @@ class MotionEncoder(nn.Module):
             pretrained_cfg = timm.models.create_model(model_name).default_cfg
             print(pretrained_cfg)
             #custom your local path of the pretrained ViT weights
-            pretrained_cfg['file'] = './vit_models/vit_base_patch16_224_in21k/B_16-i21k-300ep-lr_0.001-aug_medium1-wd_0.1-do_0.0-sd_0.0.npz'
+            pretrained_cfg['file'] = '/mnt/netdisk/zhangjh/Code/MotionPatches/vit_models/vit_base_patch16_224_in21k/B_16-i21k-300ep-lr_0.001-aug_medium1-wd_0.1-do_0.0-sd_0.0.npz'
             
             self.model = timm.create_model(
                 model_name,

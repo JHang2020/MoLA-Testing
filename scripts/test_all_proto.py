@@ -27,7 +27,7 @@ from transformers import AutoTokenizer
 
 sys.path.insert(0, os.getcwd())
 from dataset import TextMotionPartDataset
-from models.clip import ClipModel
+from models.mola import ClipModel
 
 log = logging.getLogger(__name__)
 
