@@ -1,6 +1,6 @@
 # Unified Human Motion-Language Alignment Pretraining
 
-> **Anonymous submission under review.** This repository contains the code release accompanying the paper submission. Model weights and full data preprocessing pipeline will be released upon acceptance.
+> **Anonymous submission under review.** This repository contains the code release accompanying the paper submission. Full related resources will be released upon acceptance.
 
 ---
 
@@ -9,8 +9,8 @@
 - [x] Full Model code (`mola.py`, `m2t_model.py`)
 - [x] Training & evaluation scripts for motion-text retrieval
 - [x] Training & evaluation scripts for downstream tasks
+- [x] Pretrained model weights
 - [ ] LLM-augmented annotation data
-- [ ] Pretrained model weights
 - [ ] Demo & visualization resources
 
 
@@ -95,6 +95,13 @@ Then update the model path to point to the local directory instead of the hub ID
 ```bash
 python scripts/cal_mean_var.py
 ```
+
+---
+
+## 🧱 Pretrained Model Weights
+
+Download pre-trained models from [huggingface](https://huggingface.co/Jiahang-HF/MoLA/tree/main) and put them in `checkpoints/`.
+
 
 ---
 
