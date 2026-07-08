@@ -1,17 +1,6 @@
 # Unified Human Motion-Language Alignment Pretraining
 
-> This repository contains the code release accompanying the paper submission. Full related resources will be released upon acceptance.
-
----
-
-## 🚀 Release Plan (TODO)
-
-- [x] Full Model code (`mola.py`, `m2t_model.py`)
-- [x] Training & evaluation scripts for motion-text retrieval
-- [x] Training & evaluation scripts for downstream tasks
-- [x] Pretrained model weights
-- [ ] LLM-augmented annotation data
-- [ ] Demo & visualization resources
+> This repository is mainly for the Project Functional Testing.
 
 
 ---
@@ -78,14 +67,8 @@ Then update the model path to point to the local directory instead of the hub ID
     │   ├── part_texts/
     │   ├── event_texts/
     │   ├── texts/        
-    │   └── ...
-    └── KIT-ML/
-        ├── new_joint_vecs/
-        ├── new_joints/
-        ├── part_texts/
-        ├── event_texts/
-        ├── texts/        
         └── ...
+
 ```
 
 > **Note:** The LLM-augmented part-text and event-text annotations will be released as a separate download in the future. This is required for the full training objective.
@@ -129,32 +112,16 @@ CUDA_VISIBLE_DEVICES=0 python scripts/train_m2t.py dataset=HumanML3D exp_name=mo
 ## Evaluation
 
 ### Motion–Text Retrieval
-HumanML3D Dataset:
+
 ```bash
 CUDA_VISIBLE_DEVICES=0 python scripts/test.py dataset=HumanML3D exp_name=mola_stage2
 ```
 
-KIT-ML Dataset:
-```bash
-CUDA_VISIBLE_DEVICES=0 python scripts/test.py dataset=KIT-ML exp_name=mola_stage2
-```
 
 ### Motion-to-Text Captioning
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python scripts/train_m2t.py dataset=HumanML3D exp_name=mola_stage2_m2t resume=/path/to/your/saved/m2t_model
-```
-
-### Zero-Shot Action Recognition (BABEL)
-
-BABEL-60 Dataset:
-```bash
-CUDA_VISIBLE_DEVICES=0 python scripts/action_recognition.py dataset=BABEL-60 exp_name=mola_stage2
-```
-
-BABEL-120 Dataset:
-```bash
-CUDA_VISIBLE_DEVICES=0 python scripts/action_recognition.py dataset=BABEL-120 exp_name=mola_stage2
+CUDA_VISIBLE_DEVICES=0 python scripts/train_m2t.py dataset=HumanML3D exp_name=mola_stage2_m2t resume=checkpoints/mola_stage2_m2t/HumanML3D/last_model.pt
 ```
 
 ---
