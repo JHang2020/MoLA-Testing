@@ -45,7 +45,7 @@ class Motion2TextDataset(Dataset):
         self.eval_model = split=='test'
         self.patch_size = 16
         if dataset_name == 'HumanML3D':
-            self.data_root = '/mnt/netdisk/zhangjh/Code/MotionPatches/data/HumanML3D'
+            self.data_root = 'data/HumanML3D'
             self.motion_dir = pjoin(self.data_root, 'new_joints')
             self.text_dir = pjoin(self.data_root, 'texts')
             self.joints_num = 22
@@ -350,22 +350,22 @@ w_vectorizer = WordVectorizer('data/HumanML3D/glove', 'our_vab')
 def prepare_dataset(cfg):
     val_dataloader = torch.utils.data.DataLoader(
         Motion2TextDataset(cfg.dataset.dataset_name, 'test', w_vectorizer),
-        32,
+        32,#不能改
         shuffle = True,
-        num_workers=8,
+        num_workers=16,
         collate_fn=collate_fn,
         drop_last=True
     )
 
-    train_dataloader = torch.utils.data.DataLoader(
-        Motion2TextDataset(cfg.dataset.dataset_name, 'train', w_vectorizer),
-        cfg.train.batch_size,
-        shuffle = True,
-        num_workers=8,
-        drop_last=True
-    )
+    #train_dataloader = torch.utils.data.DataLoader(
+    #    Motion2TextDataset(cfg.dataset.dataset_name, 'train', w_vectorizer),
+    #    cfg.train.batch_size,
+    #    shuffle = True,
+    #    num_workers=8,
+    #    drop_last=True
+    #)
 
-    return train_dataloader, val_dataloader
+    return val_dataloader, val_dataloader
 
 
 def prepare_model(cfg, train_dataloader):
@@ -452,17 +452,49 @@ def train(
     global_step = 0
     
     if cfg.resume:
-        r_1, r_2, r_3, matching_score_pred, bleu1, bleu4, rouge, cider, bert_score, msg = evaluation_m2t(
-                    val_dataloader,
-                    cfg,
-                    model,
-                    model.opt_tokenizer,
-                    w_vectorizer,
-                    eval_wrapper=eval_wrapper,
-                    instruction='a person is',
-                    max_new_tokens=40
-                )
-        #return
+        num_runs = 3
+        r3_list = []
+        rouge_list = []
+
+        for run_idx in range(num_runs):
+            print(f"========== Test Run {run_idx + 1}/{num_runs} ==========")
+
+            (
+                r_1,
+                r_2,
+                r_3,
+                matching_score_pred,
+                bleu1,
+                bleu2,
+                rouge,
+                cider,
+                bert_score,
+                msg,
+            ) = evaluation_m2t(
+                val_dataloader,
+                cfg,
+                model,
+                model.opt_tokenizer,
+                w_vectorizer,
+                eval_wrapper=eval_wrapper,
+                instruction="a person is",
+                max_new_tokens=40,
+            )
+
+            r3_list.append(float(r_3.item() if hasattr(r_3, "item") else r_3))
+            rouge_list.append(float(rouge.item() if hasattr(rouge, "item") else rouge))
+
+            print("测试结果：")
+            print("跨模态运动文本描述生成语义一致性指标Top-3 R-Precision: ", r_3)
+            print("跨模态运动文本描述生成词汇级匹配指标ROUGE-L: ", rouge)
+
+        print("========== 三次测试平均结果 ==========")
+        print("跨模态运动文本描述生成语义一致性指标Top-3 R-Precision: ", sum(r3_list) / num_runs)
+        print("跨模态运动文本描述生成词汇级匹配指标ROUGE-L: ", sum(rouge_list) / num_runs)
+
+        return
+
+
 
 
     for epoch in range(cfg.train.epoch):

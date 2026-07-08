@@ -212,7 +212,7 @@ class MotionCaptionModel(nn.Module):
         num_beams: int = 5,
         max_new_tokens: int = 50,
         temperature: float = 1.0,
-        top_p: float = 0.9,
+        top_p: float = None,
         repetition_penalty: float = 1.2,
         do_sample: bool = False,
     ):
@@ -270,7 +270,7 @@ class MotionCaptionModel(nn.Module):
             num_beams=1 if do_sample else num_beams,
             do_sample=do_sample,
             temperature=temperature,
-            top_p=top_p,
+            #top_p=top_p,
             eos_token_id=self.eos_token_id,
             pad_token_id=self.opt_tokenizer.pad_token_id,
             repetition_penalty=repetition_penalty,

@@ -1,5 +1,5 @@
 dataset_name: HumanML3D
-data_root: /mnt/netdisk/zhangjh/Code/MotionPatches/data/HumanML3D
+data_root: ./data/HumanML3D
 motion_dir: ${dataset.data_root}/new_joints
 text_dir: ${dataset.data_root}/texts
 joints_num: 22

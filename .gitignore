@@ -2,6 +2,7 @@
 outputs
 checkpoints
 data
+hub/
 poetry.lock
 .outputs/
 .checkpoints/

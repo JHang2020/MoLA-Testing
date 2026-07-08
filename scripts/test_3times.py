@@ -45,7 +45,33 @@ def main(cfg: DictConfig) -> None:
     train_dataloader = prepare_train_dataset(saved_cfg)
 
     # part_enhanced params: False: MoLA; True: MoLA++ 
-    eval_part(saved_cfg, train_dataloader, test_dataloader, model, tokenizer, part_enhanced=True)
+    num_runs = 3
+    all_metrics = []
+    for run_idx in range(num_runs):
+        print(f"========== Test Run {run_idx + 1}/{num_runs} ==========")
+        metrics = eval_part(
+            saved_cfg,
+            train_dataloader,
+            test_dataloader,
+            model,
+            tokenizer,
+            part_enhanced=True,
+        )
+        all_metrics.append(metrics)
+        print_metrics(metrics, prefix=f"Run {run_idx + 1}")
+
+    avg_metrics = {
+        key: float(np.mean([metrics[key] for metrics in all_metrics]))
+        for key in all_metrics[0]
+    }
+    print("========== Average Test Result ==========")
+    print_metrics(avg_metrics, prefix=f"Average of {num_runs} runs")
+
+
+def print_metrics(metrics, prefix="Test"):
+    print(f"{prefix} results:")
+    for key, value in metrics.items():
+        print(f"  {key}: {value:.5f}%")
     
 def prepare_test_dataset_part(cfg):
     mean = np.load(pjoin(cfg.dataset.data_root, "Mean_raw.npy"))
@@ -284,7 +310,7 @@ def eval_part(cfg, train_dataloader, test_dataloader, model, tokenizer=None, ver
     
     sims_t2m = qb_norm(train_t_test_m/100, sims_t2m/100) * 100
 
-    t2m_r1 = 0
+    metrics = {}
     # Text->Motion
     ranks = np.zeros(sims_t2m.shape[0])
     for index, score in enumerate(tqdm(sims_t2m)):
@@ -300,14 +326,15 @@ def eval_part(cfg, train_dataloader, test_dataloader, model, tokenizer=None, ver
     for k in [1, 2, 3, 5, 10]:
         # Compute metrics
         r = 100.0 * len(np.where(ranks < k)[0]) / len(ranks)
-        if k == 1:
-            t2m_r1 = r
+        metrics[f"R@{k}"] = r
         if verbose:
             log.info(f"跨模态运动-文本描述匹配Top-{k} 结果召回率 R@{k}: {r:.2f}")
-    if verbose:
-        log.info(f"跨模态运动-文本描述匹配中位数排名指标: {(np.median(ranks)+1)/len(sims_t2m)*100:.5f}%")
 
-    return
+    metrics["跨模态运动-文本描述匹配中位数排名指标算术平均值"] = (np.median(ranks) + 1) / len(sims_t2m) * 100
+    if verbose:
+        log.info(f"跨模态运动-文本描述匹配中位数排名指标: {metrics['跨模态运动-文本描述匹配中位数排名指标算术平均值']:.5f}%")
+
+    return metrics
 
 if __name__ == "__main__":
     main()

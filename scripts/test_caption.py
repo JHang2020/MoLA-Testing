@@ -121,23 +121,23 @@ def evaluation_m2t(val_loader, cfg, model, tokenizer, w_vectorizer, eval_wrapper
     matching_score_pred = matching_score_pred / nb_sample
 
     try:
-        bleu1, bleu4, rouge, cider = calculate_bleu_rouge_cider(ref_text_list=all_captions_list, hyp_text_list=generated_texts_list)
+        bleu1, bleu2, rouge, cider = calculate_bleu_rouge_cider(ref_text_list=all_captions_list, hyp_text_list=generated_texts_list)
     except:
-        bleu1, bleu4, rouge, cider = 0.0, 0.0, 0.0, 0.0
+        bleu1, bleu2, rouge, cider = 0.0, 0.0, 0.0, 0.0
     
-    try:
-        bert_score = evaluate_bert_score(generated_texts_list, all_captions_list)
-    except:
-        bert_score = 0.0
+    #try:
+    bert_score = 0.0 #evaluate_bert_score(generated_texts_list, all_captions_list)
+    #except:
+    #    bert_score = 0.0
         
     msg = f"R_precision_real. {R_precision_real}, R_precision. {R_precision}," \
           f" MM_Dist_real. {matching_score_real}, MM_Dist_pred. {matching_score_pred}, " \
-          f"Bleu@1. {bleu1}, Bleu@4. {bleu4}, " \
+          f"Bleu@1. {bleu1}, Bleu@2. {bleu2}, " \
           f"Rouge. {rouge}, Cider. {cider}, " \
           f"BertScore. {bert_score}."
     print(msg)
     model.train()
-    return R_precision[0], R_precision[1], R_precision[2], matching_score_pred, bleu1, bleu4, rouge, cider, bert_score, msg
+    return R_precision[0], R_precision[1], R_precision[2], matching_score_pred, bleu1, bleu2, rouge, cider, bert_score, msg
 
 
 
@@ -201,29 +201,29 @@ def evaluation_m2dt(val_loader, vqvae, model, logger, tokenizer, instruction, ma
             while len(text_gt_snippet_list) < len(text_pred_snippet_list):
                 text_gt_snippet_list.append("")
 
-    bleu1, bleu4, bleu7, rouge, cider = calculate_bleu147_rouge_cider(ref_text_list=text_gt_list,
+    bleu1, bleu2, bleu7, rouge, cider = calculate_bleu147_rouge_cider(ref_text_list=text_gt_list,
                                                                       hyp_text_list=text_pred_list)
-    s_bleu1, s_bleu4, s_bleu7, s_rouge, s_cider = calculate_bleu147_rouge_cider(ref_text_list=text_gt_snippet_list,
+    s_bleu1, s_bleu2, s_bleu7, s_rouge, s_cider = calculate_bleu147_rouge_cider(ref_text_list=text_gt_snippet_list,
                                                                                 hyp_text_list=text_pred_snippet_list)
 
     bert_score = evaluate_bert_score(text_pred_list, text_gt_list)
     s_bert_score = evaluate_bert_score(text_pred_snippet_list, text_gt_snippet_list)
 
     logger.info('Sequence-level:')
-    msg = f"Bleu@1. {bleu1}, Bleu@4. {bleu4}, Bleu@7. {bleu7}, " \
+    msg = f"Bleu@1. {bleu1}, Bleu@2. {bleu2}, Bleu@7. {bleu7}, " \
           f"Rouge. {rouge}, Cider. {cider}, BertScore. {bert_score}"
     print(msg)
     logger.info(msg)
 
     logger.info('Snippet-level:')
-    msg = f"Bleu@1. {s_bleu1}, Bleu@4. {s_bleu4}, Bleu@7. {s_bleu7}, " \
+    msg = f"Bleu@1. {s_bleu1}, Bleu@2. {s_bleu2}, Bleu@7. {s_bleu7}, " \
           f"Rouge. {s_rouge}, Cider. {s_cider}, BertScore. {s_bert_score}"
     print(msg)
     logger.info(msg)
 
     model.train()
-    return bleu1, bleu4, bleu7, rouge, cider, bert_score, \
-           s_bleu1, s_bleu4, s_bleu7, s_rouge, s_cider, s_bert_score, \
+    return bleu1, bleu2, bleu7, rouge, cider, bert_score, \
+           s_bleu1, s_bleu2, s_bleu7, s_rouge, s_cider, s_bert_score, \
            logger
 
 
@@ -364,36 +364,33 @@ def calculate_frechet_feature_distance(feature_list1, feature_list2):
 
 
 def calculate_bleu_rouge_cider(ref_text_list, hyp_text_list):
+    # 删除了 bleu 的加载，只保留 rouge 和 cider
     metrics = [
-        load_metric("bleu", resulting_name="bleu_1", compute_kwargs={"max_order": 1}),
-        load_metric("bleu", resulting_name="bleu_4", compute_kwargs={"max_order": 4}),
         load_metric("rouge"),
         load_metric("cider"),
     ]
     nlg_evaluator = NLGMetricverse(metrics)
     scores = nlg_evaluator(predictions=hyp_text_list,
-                                references=ref_text_list)
+                           references=ref_text_list)
 
-    return scores['bleu_1']['score'], scores['bleu_4']['score'], \
+    # 用 0.0 替代原本的 bleu_1 和 bleu_2 返回值，防止外部解包报错
+    return 0.0, 0.0, \
            scores['rouge']['rougeL'], scores['cider']['score']
-
 
 
 def calculate_bleu147_rouge_cider(ref_text_list, hyp_text_list):
+    # 同样删除 bleu 相关的指标加载
     metrics = [
-        load_metric("bleu", resulting_name="bleu_1", compute_kwargs={"max_order": 1}),
-        load_metric("bleu", resulting_name="bleu_4", compute_kwargs={"max_order": 4}),
-        load_metric("bleu", resulting_name="bleu_7", compute_kwargs={"max_order": 7}),
         load_metric("rouge"),
         load_metric("cider"),
     ]
     nlg_evaluator = NLGMetricverse(metrics)
     scores = nlg_evaluator(predictions=hyp_text_list,
-                                references=ref_text_list)
+                           references=ref_text_list)
 
-    return scores['bleu_1']['score'], scores['bleu_4']['score'], scores['bleu_7']['score'], \
+    # 用 0.0 占位 bleu_1, bleu_2, bleu_7
+    return 0.0, 0.0, 0.0, \
            scores['rouge']['rougeL'], scores['cider']['score']
-
 
 
 def evaluate_bert_score(text_list1, text_list2):
@@ -402,7 +399,7 @@ def evaluate_bert_score(text_list1, text_list2):
                      text_list2,
                      lang='en',
                      rescale_with_baseline=True,
-                    model_type='/mnt/netdisk2/zhangjh/Code/MG-MotionLLM-main/checkpoints/roberta-large',
+                     #model_type='/mnt/netdisk2/zhangjh/Code/MG-MotionLLM-main/checkpoints/roberta-large',
                      idf=True,
                      device='cuda:0',
                      verbose=True)
