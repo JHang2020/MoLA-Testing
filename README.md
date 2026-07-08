@@ -48,9 +48,7 @@ Then update the model path to point to the local directory instead of the hub ID
 
 ## 📂 Data Preparation
 
-- Download **HumanML3D** and **KIT-ML** from the [HumanML3D repository](https://github.com/EricGuo5513/HumanML3D).
-
-- Download **BABEL-60** and **BABEL-120** dataset from [here](https://drive.google.com/drive/u/0/folders/1_SpOgtYCZBPAXoVz00Zhyk6tPRObUIiW). Then process them in HumanML3D style. 
+- Download **HumanML3D** from the [HumanML3D repository](https://github.com/EricGuo5513/HumanML3D).
 
 - Organise the data directory as follows:
 
