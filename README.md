@@ -112,7 +112,7 @@ CUDA_VISIBLE_DEVICES=0 python scripts/train_m2t.py dataset=HumanML3D exp_name=mo
 ### Motion–Text Retrieval
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python scripts/test.py dataset=HumanML3D exp_name=mola_stage2
+CUDA_VISIBLE_DEVICES=0 python scripts/test_3times.py dataset=HumanML3D exp_name=mola_stage2
 ```
 
 
